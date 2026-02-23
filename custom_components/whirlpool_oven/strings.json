@@ -1,0 +1,30 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Whirlpool Oven — Sign in",
+        "description": "Enter your Whirlpool 6th Sense account credentials.",
+        "data": {
+          "username": "Email address",
+          "password": "Password",
+          "brand": "Brand"
+        }
+      },
+      "select_appliance": {
+        "title": "Select appliance",
+        "description": "Multiple appliances were found on your account. Choose one to add.",
+        "data": {
+          "appliance": "Appliance"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid email or password.",
+      "cognito_failed": "Could not obtain AWS IoT credentials. Try again later.",
+      "no_appliances": "No compatible appliances found on this account."
+    },
+    "abort": {
+      "already_configured": "This appliance is already configured."
+    }
+  }
+}

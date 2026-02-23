@@ -1,0 +1,11 @@
+{
+  "domain": "whirlpool_oven",
+  "name": "Whirlpool Oven",
+  "documentation": "https://github.com/epg-pers/whirlpool-oven-ha",
+  "requirements": ["awsiotsdk>=1.21.0", "boto3>=1.26.0"],
+  "dependencies": [],
+  "codeowners": [],
+  "config_flow": true,
+  "iot_class": "cloud_push",
+  "version": "0.1.0"
+}

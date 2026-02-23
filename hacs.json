@@ -1,0 +1,5 @@
+{
+  "name": "Whirlpool Oven (6th Sense)",
+  "description": "Control and monitor Whirlpool 6th Sense ovens. Supports oven state, favourites, and basic commands.",
+  "render_readme": true
+}

@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*~
+
+# macOS / Windows
+.DS_Store
+Thumbs.db
+
+# No real credentials or personal config should ever be committed
+*.env
+.env
+config/secrets.yaml
+tests/fixtures/real_*.json
+
+# HA instance data
+home-assistant_v2.db
