@@ -15,9 +15,7 @@ from .const import (
     APP_HEADERS,
     BRAND_CREDENTIALS,
     BRAND_OPTIONS,
-    COGNITO_IDENTITY_URL,
     COGNITO_LOGIN_PROVIDER,
-    COGNITO_TARGET_HEADER,
     CONF_ACCESS_TOKEN,
     CONF_BRAND,
     CONF_MODEL,
@@ -26,8 +24,8 @@ from .const import (
     CONF_TOKEN_EXPIRES,
     DOMAIN,
     EU_AUTH_URL,
-    EU_COGNITO_ID_URL,
     EU_AWS_REGION,
+    EU_COGNITO_ID_URL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -193,45 +191,39 @@ class WhirlpoolOvenConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         self._cognito_identity_id = identity_id
 
-        # Step 2: exchange for temporary AWS credentials
-        try:
-            async with session.post(
-                COGNITO_IDENTITY_URL,
-                json={
-                    "IdentityId": identity_id,
-                    "Logins": {COGNITO_LOGIN_PROVIDER: openid_token},
-                },
-                headers={
-                    "Content-Type": "application/x-amz-json-1.1",
-                    "X-Amz-Target": COGNITO_TARGET_HEADER,
-                },
-                timeout=aiohttp.ClientTimeout(total=30),
-            ) as resp:
-                body = await resp.text()
-                if resp.status != 200:
-                    _LOGGER.error(
-                        "GetCredentialsForIdentity returned HTTP %s: %s", resp.status, body
-                    )
-                    return False
-                aws_data = await resp.json(content_type=None)
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("GetCredentialsForIdentity failed: %s", err)
-            return False
+        # Step 2: exchange OpenID token for temporary AWS credentials via boto3
+        import asyncio
 
+        loop = asyncio.get_running_loop()
+        aws_creds = await loop.run_in_executor(
+            None, self._get_aws_creds_sync, identity_id, openid_token
+        )
+        if aws_creds is None:
+            return False
+        self._aws_creds = aws_creds
+        return True
+
+    def _get_aws_creds_sync(
+        self, identity_id: str, openid_token: str
+    ) -> dict[str, str] | None:
+        """Call GetCredentialsForIdentity via boto3 (blocking — run in executor)."""
+        import boto3
+
+        client = boto3.client("cognito-identity", region_name=EU_AWS_REGION)
         try:
-            c = aws_data["Credentials"]
-            self._aws_creds = {
+            resp = client.get_credentials_for_identity(
+                IdentityId=identity_id,
+                Logins={COGNITO_LOGIN_PROVIDER: openid_token},
+            )
+            c = resp["Credentials"]
+            return {
                 "AccessKeyId": c["AccessKeyId"],
                 "SecretKey": c["SecretKey"],
                 "SessionToken": c["SessionToken"],
             }
-        except KeyError as err:
-            _LOGGER.error(
-                "Unexpected AWS credentials response (missing key %s): %s", err, aws_data
-            )
-            return False
-
-        return True
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("GetCredentialsForIdentity (boto3) failed: %s", err)
+            return None
 
     async def _discover_appliances(
         self, session: aiohttp.ClientSession
@@ -239,7 +231,7 @@ class WhirlpoolOvenConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Use AWS IoT to discover registered appliances."""
         import asyncio
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         aws_creds = self._aws_creds
         cognito_id = self._cognito_identity_id
         # The IoT thing group name is the UUID portion of the Cognito identity ID
