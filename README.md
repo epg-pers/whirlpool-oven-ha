@@ -28,6 +28,10 @@ For TS appliances, the standard REST endpoint (`/api/v1/appliance/{id}`) returns
 
 ### Via HACS (recommended)
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=epg-pers&repository=whirlpool-oven-ha&category=integration)
+
+Or manually:
+
 1. In HACS → Integrations → ⋮ → Custom repositories, add `https://github.com/epg-pers/whirlpool-oven-ha` as an **Integration**.
 2. Search for *Whirlpool Oven* and install it.
 3. Restart Home Assistant.
