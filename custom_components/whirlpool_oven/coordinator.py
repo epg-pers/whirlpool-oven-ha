@@ -82,6 +82,7 @@ class WhirlpoolOvenCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # State / favourites
         self._state: dict[str, Any] = {}
         self._favourites: list[dict[str, Any]] = []
+        self.selected_favourite_id: str | None = None
 
     # ── Public API ─────────────────────────────────────────────────────────────
 

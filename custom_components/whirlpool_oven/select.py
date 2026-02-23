@@ -58,13 +58,11 @@ class FavouriteSelect(CoordinatorEntity[WhirlpoolOvenCoordinator], SelectEntity)
         """Record which favourite is selected (doesn't start cooking yet)."""
         if option == _NO_SELECTION:
             self._selected_id = None
+            self.coordinator.selected_favourite_id = None
             return
         fav = next(
             (f for f in self.coordinator.favourites if f.get("name") == option), None
         )
         self._selected_id = fav["id"] if fav else None
+        self.coordinator.selected_favourite_id = self._selected_id
         self.async_write_ha_state()
-
-    @property
-    def selected_favourite_id(self) -> str | None:
-        return self._selected_id

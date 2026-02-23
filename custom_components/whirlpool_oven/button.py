@@ -8,7 +8,6 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
 from .const import CONF_SAID, DOMAIN
 from .coordinator import WhirlpoolOvenCoordinator
@@ -61,33 +60,12 @@ class StartFavouriteButton(_OvenButtonBase):
         )
 
     async def async_press(self) -> None:
-        """Find the FavouriteSelect entity and trigger the selected favourite."""
-        er = async_get_entity_registry(self.hass)
-        said = self._entry.data[CONF_SAID]
-
-        # Look up the companion select entity
-        select_uid = f"{said}_favourite"
-        select_entry = er.async_get_entity_id("select", DOMAIN, select_uid)
-        if select_entry is None:
-            _LOGGER.warning("Favourite select entity not found")
+        """Trigger the currently selected favourite preset."""
+        fav_id = self._coordinator.selected_favourite_id
+        if fav_id is None:
+            _LOGGER.warning("No favourite selected — pick one from the Oven Favourite dropdown first")
             return
-
-        state = self.hass.states.get(select_entry)
-        if state is None or state.state in ("— select —", "unknown", "unavailable"):
-            _LOGGER.warning("No favourite selected")
-            return
-
-        # Match name back to ID
-        fav_name = state.state
-        fav = next(
-            (f for f in self._coordinator.favourites if f.get("name") == fav_name),
-            None,
-        )
-        if fav is None:
-            _LOGGER.error("Could not find favourite '%s'", fav_name)
-            return
-
-        await self._coordinator.async_trigger_favourite(fav["id"])
+        await self._coordinator.async_trigger_favourite(fav_id)
 
 
 class StopCookingButton(_OvenButtonBase):
