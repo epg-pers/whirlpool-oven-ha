@@ -171,15 +171,26 @@ class WhirlpoolOvenConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 },
                 timeout=aiohttp.ClientTimeout(total=30),
             ) as resp:
+                body = await resp.text()
                 if resp.status != 200:
+                    _LOGGER.error(
+                        "Cognito ID endpoint returned HTTP %s: %s", resp.status, body
+                    )
                     return False
-                cognito_data = await resp.json()
+                cognito_data = await resp.json(content_type=None)
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("Cognito ID request failed: %s", err)
             return False
 
-        identity_id: str = cognito_data["identityId"]
-        openid_token: str = cognito_data["token"]
+        try:
+            identity_id: str = cognito_data["identityId"]
+            openid_token: str = cognito_data["token"]
+        except KeyError as err:
+            _LOGGER.error(
+                "Unexpected Cognito ID response (missing key %s): %s", err, cognito_data
+            )
+            return False
+
         self._cognito_identity_id = identity_id
 
         # Step 2: exchange for temporary AWS credentials
@@ -196,19 +207,30 @@ class WhirlpoolOvenConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 },
                 timeout=aiohttp.ClientTimeout(total=30),
             ) as resp:
+                body = await resp.text()
                 if resp.status != 200:
+                    _LOGGER.error(
+                        "GetCredentialsForIdentity returned HTTP %s: %s", resp.status, body
+                    )
                     return False
-                aws_data = await resp.json()
+                aws_data = await resp.json(content_type=None)
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("GetCredentialsForIdentity failed: %s", err)
             return False
 
-        c = aws_data["Credentials"]
-        self._aws_creds = {
-            "AccessKeyId": c["AccessKeyId"],
-            "SecretKey": c["SecretKey"],
-            "SessionToken": c["SessionToken"],
-        }
+        try:
+            c = aws_data["Credentials"]
+            self._aws_creds = {
+                "AccessKeyId": c["AccessKeyId"],
+                "SecretKey": c["SecretKey"],
+                "SessionToken": c["SessionToken"],
+            }
+        except KeyError as err:
+            _LOGGER.error(
+                "Unexpected AWS credentials response (missing key %s): %s", err, aws_data
+            )
+            return False
+
         return True
 
     async def _discover_appliances(
