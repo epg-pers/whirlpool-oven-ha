@@ -44,6 +44,15 @@ _LOGGER = logging.getLogger(__name__)
 _REFRESH_BUFFER = 300
 
 
+def _deep_merge(base: dict[str, Any], update: dict[str, Any]) -> None:
+    """Recursively merge *update* into *base* in-place."""
+    for key, value in update.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+
+
 class WhirlpoolOvenCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Manages authentication, MQTT connection, and oven state."""
 
@@ -350,8 +359,8 @@ class WhirlpoolOvenCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.hass.loop.call_soon_threadsafe(self._apply_state_update, state_data)
 
     def _apply_state_update(self, data: dict[str, Any]) -> None:
-        """Merge new state into _state and notify HA entities (runs in HA loop)."""
-        self._state.update(data)
+        """Deep-merge new state into _state and notify HA entities (runs in HA loop)."""
+        _deep_merge(self._state, data)
         self.async_set_updated_data(dict(self._state))
 
     def _on_mqtt_interrupted(self, connection: Any, error: Any, **_kwargs: Any) -> None:
