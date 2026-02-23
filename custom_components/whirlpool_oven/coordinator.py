@@ -18,10 +18,9 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import (
     APP_HEADERS,
     BRAND_CREDENTIALS,
-    COGNITO_IDENTITY_URL,
     COGNITO_LOGIN_PROVIDER,
-    COGNITO_TARGET_HEADER,
     CMD_GET_STATE,
+    CMD_RUN,
     CONF_ACCESS_TOKEN,
     CONF_BRAND,
     CONF_MODEL,
@@ -30,10 +29,10 @@ from .const import (
     CONF_TOKEN_EXPIRES,
     DOMAIN,
     EU_AUTH_URL,
+    EU_AWS_REGION,
     EU_COGNITO_ID_URL,
     EU_FAVOURITES_URL,
     EU_IOT_ENDPOINT,
-    EU_AWS_REGION,
     TOPIC_CMD_REQUEST,
     TOPIC_CMD_RESPONSE,
     TOPIC_STATE_UPDATE,
@@ -117,7 +116,7 @@ class WhirlpoolOvenCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Disconnect MQTT cleanly."""
         if self._mqtt_connection is None:
             return
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         try:
             await loop.run_in_executor(
                 None,
@@ -226,46 +225,55 @@ class WhirlpoolOvenCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._cognito_identity_id = identity_id
         self._client_id = f"{identity_id}_ha"
 
-        # Step 2: exchange the OpenID token for temporary AWS credentials
+        # Step 2: exchange the OpenID token for temporary AWS credentials via boto3
+        loop = asyncio.get_running_loop()
         try:
-            async with self._session.post(
-                COGNITO_IDENTITY_URL,
-                json={
-                    "IdentityId": identity_id,
-                    "Logins": {COGNITO_LOGIN_PROVIDER: openid_token},
-                },
-                headers={
-                    "Content-Type": "application/x-amz-json-1.1",
-                    "X-Amz-Target": COGNITO_TARGET_HEADER,
-                },
-                timeout=aiohttp.ClientTimeout(total=30),
-            ) as resp:
-                resp.raise_for_status()
-                aws_data = await resp.json()
+            aws_creds, expire_ts = await loop.run_in_executor(
+                None, self._get_aws_creds_sync, identity_id, openid_token
+            )
         except Exception as err:
             raise UpdateFailed(f"GetCredentialsForIdentity failed: {err}") from err
 
-        c = aws_data["Credentials"]
-        self._aws_creds = {
+        self._aws_creds = aws_creds
+        self._aws_creds_expire = expire_ts
+        _LOGGER.debug("Cognito credentials obtained, expire at %s", expire_ts)
+
+    @staticmethod
+    def _get_aws_creds_sync(
+        identity_id: str, openid_token: str
+    ) -> tuple[dict[str, str], float]:
+        """Call GetCredentialsForIdentity via boto3 (blocking — run in executor)."""
+        import boto3
+        from datetime import timezone
+
+        client = boto3.client("cognito-identity", region_name=EU_AWS_REGION)
+        resp = client.get_credentials_for_identity(
+            IdentityId=identity_id,
+            Logins={COGNITO_LOGIN_PROVIDER: openid_token},
+        )
+        c = resp["Credentials"]
+        creds = {
             "AccessKeyId": c["AccessKeyId"],
             "SecretKey": c["SecretKey"],
             "SessionToken": c["SessionToken"],
         }
-        # Expiration may be an ISO string or a unix timestamp
         exp = c.get("Expiration", 0)
-        if isinstance(exp, str):
-            from datetime import datetime, timezone
-            exp = datetime.fromisoformat(
+        if hasattr(exp, "timestamp"):
+            expire_ts = exp.astimezone(timezone.utc).timestamp()
+        elif isinstance(exp, str):
+            from datetime import datetime
+            expire_ts = datetime.fromisoformat(
                 exp.replace("Z", "+00:00")
             ).astimezone(timezone.utc).timestamp()
-        self._aws_creds_expire = float(exp)
-        _LOGGER.debug("Cognito credentials obtained, expire at %s", self._aws_creds_expire)
+        else:
+            expire_ts = float(exp)
+        return creds, expire_ts
 
     # ── MQTT ────────────────────────────────────────────────────────────────────
 
     async def _connect_mqtt(self) -> None:
         await self._ensure_cognito_creds()
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         aws_creds = self._aws_creds
         client_id = self._client_id
@@ -301,7 +309,7 @@ class WhirlpoolOvenCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await self._subscribe_topics()
 
     async def _subscribe_topics(self) -> None:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         topics = [
             TOPIC_STATE_UPDATE.format(model=self._model, said=self._said),
             TOPIC_CMD_RESPONSE.format(
@@ -372,7 +380,7 @@ class WhirlpoolOvenCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "payload": payload,
             }
         )
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _publish():
             from awscrt.mqtt import QoS
