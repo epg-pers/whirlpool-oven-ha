@@ -348,6 +348,8 @@ class WhirlpoolOvenCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.warning("Unparseable MQTT payload on %s: %s", topic, err)
             return
 
+        _LOGGER.debug("MQTT recv [%s]: %s", topic, json.dumps(data))
+
         # State update topics carry the state dict directly.
         # Command response topics wrap state in a "payload" key.
         if "/state/update" in topic:
@@ -401,6 +403,7 @@ class WhirlpoolOvenCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             future.result(timeout=10)
 
+        _LOGGER.debug("MQTT send [%s]: %s", topic, message)
         await loop.run_in_executor(None, _publish)
 
     # ── Favourites ──────────────────────────────────────────────────────────────
@@ -463,13 +466,24 @@ class WhirlpoolOvenCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
 
         cycle = cycles[0]
+        # The favourites API uses app-side cavity names like "OvenUpperCavity";
+        # the MQTT broker expects "primaryCavity" / "secondaryCavity".
+        cavity_raw = fav.get("cavity", "")
+        if "secondary" in cavity_raw.lower() or "lower" in cavity_raw.lower():
+            addressee = "secondaryCavity"
+        else:
+            addressee = "primaryCavity"
         payload: dict[str, Any] = {
-            "addressee": fav.get("cavity", "primaryCavity"),
+            "addressee": addressee,
             "command": CMD_RUN,
-            "sessionId": str(uuid.uuid4()),
+            "sessionId": self.primary_cavity.get("sessionId", ""),
         }
+        _LOGGER.debug(
+            "Triggering favourite '%s': cavity_raw=%s addressee=%s cycle=%s",
+            fav.get("name"), cavity_raw, addressee, cycle,
+        )
         if cycle_name := cycle.get("CycleName"):
-            payload["recipeId"] = cycle_name
+            payload["recipeID"] = cycle_name
         if target_temp := cycle.get("CavityTargetTemp"):
             payload["targetTemperature"] = float(target_temp)
         if preheat := cycle.get("PreheatType"):

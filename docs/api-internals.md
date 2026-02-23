@@ -173,14 +173,14 @@ All messages are JSON:
   "addressee": "primaryCavity",
   "command": "run",
   "sessionId": "<uuid>",
-  "recipeId": "forcedAir",
+  "recipeID": "forcedAir",
   "targetTemperature": 180.0,
   "preheat": "rapidPreheat",
   "cookTimer": { "command": "run", "time": 1200 }
 }
 ```
 
-Known `recipeId` values (others likely exist — check capability file `W20018739`):
+Known `recipeID` values (others likely exist — check capability file `W20018739`):
 - `forcedAir` — fan oven
 - `conventional` — top + bottom heat
 - `topHeat` — grill
