@@ -85,22 +85,17 @@ Response:
 
 ### Step 3 — AWS temporary credentials
 
-**POST** `https://cognito-identity.eu-central-1.amazonaws.com/`
+Use the `boto3` `cognito-identity` client — a raw HTTP call with `X-Amz-Target` is unreliable depending on HTTP client and Content-Type handling:
 
-Headers:
-```
-Content-Type: application/x-amz-json-1.1
-X-Amz-Target: AmazonCognitoIdentity.GetCredentialsForIdentity
-```
-
-Body:
-```json
-{
-  "IdentityId": "eu-central-1:<uuid>",
-  "Logins": {
-    "cognito-identity.amazonaws.com": "<openid_jwt from step 2>"
-  }
-}
+```python
+import boto3
+client = boto3.client("cognito-identity", region_name="eu-central-1")
+resp = client.get_credentials_for_identity(
+    IdentityId="eu-central-1:<uuid>",
+    Logins={"cognito-identity.amazonaws.com": "<openid_jwt from step 2>"},
+)
+creds = resp["Credentials"]
+# creds: AccessKeyId, SecretKey, SessionToken, Expiration (~1 hour)
 ```
 
 Response contains `Credentials.AccessKeyId`, `.SecretKey`, `.SessionToken`, `.Expiration` (~1 hour).
@@ -172,13 +167,17 @@ All messages are JSON:
 {
   "addressee": "primaryCavity",
   "command": "run",
-  "sessionId": "<uuid>",
+  "sessionId": "<current sessionId from state — empty string when idle>",
   "recipeID": "forcedAir",
   "targetTemperature": 180.0,
   "preheat": "rapidPreheat",
   "cookTimer": { "command": "run", "time": 1200 }
 }
 ```
+
+> **⚠️ `recipeID` casing**: the field is `recipeID` (capital I and D), not `recipeId`. The oven will reject the command with `FAILED_TO_SET_RECIPE` if the casing is wrong.
+>
+> **`sessionId`**: send the current `primaryCavity.sessionId` from the oven state. This is an empty string `""` when the oven is idle. Do **not** generate a fresh UUID — the oven rejects it with `INVALID_SESSION_ID`.
 
 Known `recipeID` values (others likely exist — check capability file `W20018739`):
 - `forcedAir` — fan oven
@@ -267,7 +266,16 @@ Response structure:
 }
 ```
 
-To start a favourite, extract the `myCreationCycle[0]` fields and map them to the MQTT `run` command (see above). The `cavity` field becomes `addressee`.
+To start a favourite, extract the `myCreationCycle[0]` fields and map them to the MQTT `run` command:
+
+| Favourite field | MQTT field |
+|----------------|------------|
+| `CycleName` | `recipeID` |
+| `CavityTargetTemp` | `targetTemperature` (float) |
+| `CookTimeSetTime` | `cookTimer.time` (int seconds) |
+| `PreheatType` | `preheat` |
+
+The `cavity` field (`OvenUpperCavity`, `OvenLowerCavity`) maps to the MQTT `addressee` as follows: `OvenUpperCavity` → `primaryCavity`, `OvenLowerCavity` → `secondaryCavity`. Do **not** pass the raw `cavity` string directly as `addressee` — the oven will not recognise it.
 
 ---
 
